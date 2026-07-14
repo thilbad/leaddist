@@ -29,12 +29,12 @@
     return {
       sections: [
         {
-          id: "retail", label: "Retail", hasBB: false,
+          id: "retail", label: "Retail", hasBB: true,
           members: [
-            { name: "Ashutosh", leads: 27 },
-            { name: "Jack", leads: 25 },
-            { name: "Naman", leads: 28 },
-            { name: "Noah", leads: 15 },
+            { name: "Ashutosh", leads: 27, bb: 0 },
+            { name: "Jack", leads: 25, bb: 0 },
+            { name: "Naman", leads: 28, bb: 0 },
+            { name: "Noah", leads: 15, bb: 0 },
           ],
         },
         {
@@ -61,10 +61,23 @@
       var raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         var parsed = JSON.parse(raw);
-        if (parsed && Array.isArray(parsed.sections) && Array.isArray(parsed.history)) return parsed;
+        if (parsed && Array.isArray(parsed.sections) && Array.isArray(parsed.history)) return migrate(parsed);
       }
     } catch (e) { /* fall through */ }
     return defaultState();
+  }
+
+  /* Bring older saved state up to date: all live segments now track BB, so
+   * ensure every section has hasBB and every member has a bb integer.
+   * History snapshots are left as-is — they reflect what was tracked then. */
+  function migrate(s) {
+    s.sections.forEach(function (sec) {
+      sec.hasBB = true;
+      sec.members.forEach(function (m) {
+        if (typeof m.bb !== "number") m.bb = 0;
+      });
+    });
+    return s;
   }
 
   function save() {
@@ -552,5 +565,6 @@
 
   /* ---------- Go ---------- */
   initTheme();
+  save(); // persist any migration applied during load()
   renderTracker();
 })();
