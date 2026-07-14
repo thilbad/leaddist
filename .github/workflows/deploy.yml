@@ -26,11 +26,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Configure Pages
-        # enablement: true turns GitHub Pages on automatically, so no manual
-        # toggle in Settings > Pages is required for the first deploy.
+        # Pages must be enabled once in Settings > Pages (Source: GitHub Actions).
+        # The workflow GITHUB_TOKEN isn't allowed to create the site itself.
         uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
       - name: Upload site artifact
         uses: actions/upload-pages-artifact@v3
