@@ -16,6 +16,7 @@
       <p class="subtitle" id="subtitle">Tracking …</p>
     </div>
     <div class="head-right">
+      <span class="sync-status" id="syncStatus" title="Sync status"><span class="dot"></span>…</span>
       <span class="grand-total" id="grandTotal">0 total leads</span>
       <button class="icon-btn theme-toggle" id="themeToggle" title="Toggle light / dark" aria-label="Toggle theme">
         <i class="ti ti-moon"></i>
@@ -33,7 +34,10 @@
     <section id="panel-tracker" class="panel active">
       <div class="close-bar">
         <span id="closeBarText">Ready to close this month? Snapshot this month and reset all counters.</span>
-        <button class="btn btn-primary" id="closeMonthBtn">Close month</button>
+        <div class="close-bar-actions">
+          <button class="btn" id="lockBtn"><i class="ti ti-lock"></i> Unlock editing</button>
+          <button class="btn btn-primary" id="closeMonthBtn">Close month</button>
+        </div>
       </div>
       <div id="sections"></div>
     </section>
@@ -54,6 +58,7 @@
   <div id="modalRoot"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="app.js"></script>
 </body>
 </html>

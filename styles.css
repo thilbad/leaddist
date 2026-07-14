@@ -50,6 +50,8 @@ body {
 .head-main h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.01em; }
 .subtitle { margin: 0.1rem 0 0; font-size: 0.82rem; color: var(--muted); }
 .head-right { display: flex; align-items: center; gap: 0.75rem; }
+.sync-status { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.78rem; color: var(--muted); white-space: nowrap; }
+.sync-status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
 .grand-total {
   background: var(--primary);
   color: var(--primary-contrast);
@@ -135,6 +137,14 @@ body {
   box-shadow: var(--shadow);
   font-size: 0.9rem;
 }
+.close-bar-actions { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+
+/* Locked (view-only) tracker: dim the write controls as a hint */
+body.locked .lead-controls,
+body.locked .bb-row .counter-group,
+body.locked .mc-remove,
+body.locked .add-member { opacity: 0.45; }
+body.locked #closeMonthBtn { opacity: 0.55; }
 
 /* ===== Sections ===== */
 .section { margin-bottom: 1.75rem; }
@@ -341,3 +351,23 @@ body {
   margin-bottom: 0.7rem;
 }
 [data-theme="dark"] .warn-badge { color: #eda100; }
+
+/* ===== Toast ===== */
+.toast {
+  position: fixed;
+  bottom: 1.25rem;
+  left: 50%;
+  transform: translateX(-50%) translateY(1rem);
+  background: var(--text);
+  color: var(--bg);
+  padding: 0.55rem 1rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s, transform 0.2s;
+  z-index: 200;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }

@@ -21,6 +21,11 @@ data lives in the browser's `localStorage`.
   as a `.csv` file; the toolbar button downloads all months at once (UTF-8 with BOM, CRLF,
   quoted fields).
 - **Light / dark theme** — follows your OS preference, with a manual toggle in the header.
+- **Cloud sync** — the shared dataset lives in Supabase and syncs across all devices in
+  real time. History is readable by anyone; **editing the Tracker requires a team passcode**
+  that is verified and enforced by a database function (never stored in this repo). A sync
+  status indicator and a lock/unlock control live in the header/close bar. `localStorage`
+  is kept as an offline cache.
 - Responsive down to 360px; seed data on first load.
 
 ## Tech
