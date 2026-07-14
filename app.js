@@ -742,21 +742,34 @@
     setSync("synced");
   }
 
+  var SYNCED_KEY = "anz_synced";
+  function markSynced() { try { localStorage.setItem(SYNCED_KEY, "1"); } catch (e) {} }
+  function hasSyncedBefore() { try { return localStorage.getItem(SYNCED_KEY) === "1"; } catch (e) { return false; } }
+
   function adoptCloud(data) {
     state = migrate(data);
     save();
+    markSynced();
     renderTracker();
     if ($("#panel-history").classList.contains("active")) renderHistory();
   }
 
   function pushLocalAsTruth() {
     dirty = true; setSync("saving"); flushPush();
+    markSynced();
     toast("Uploaded this device's data");
   }
 
-  // First connect: if this device differs from the cloud, let the user choose.
+  // On first cloud connect only, and only when this device holds real local
+  // work (not the untouched seed) that differs from the cloud, ask the user
+  // which copy wins. A pristine/new device or an already-synced device just
+  // adopts the shared cloud copy silently.
   function reconcile(cloudData) {
-    if (canon(cloudData) === canon(state)) { adoptCloud(cloudData); return; }
+    var pristine = canon(state) === canon(defaultState());
+    if (hasSyncedBefore() || pristine || canon(cloudData) === canon(state)) {
+      adoptCloud(cloudData);
+      return;
+    }
     var m = el("div", "modal");
     m.innerHTML =
       "<h3>Set up sync on this device</h3>" +
