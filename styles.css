@@ -250,28 +250,6 @@ body {
 }
 .history-toolbar span { color: var(--muted); font-size: 0.9rem; font-weight: 600; }
 
-.export-panel {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 1rem;
-  margin-bottom: 1.25rem;
-  box-shadow: var(--shadow);
-}
-.export-panel textarea {
-  width: 100%;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 8px;
-  padding: 0.6rem;
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 0.8rem;
-  resize: vertical;
-}
-.export-actions { display: flex; align-items: center; gap: 0.75rem; margin-top: 0.75rem; }
-.copied { color: #1baf7a; font-weight: 600; font-size: 0.85rem; }
-
 .history-card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -293,6 +271,8 @@ body {
 .history-head .hh-left { display: flex; align-items: center; gap: 0.6rem; }
 .history-head .hh-month { font-weight: 700; }
 .history-head .hh-total { color: var(--muted); font-size: 0.88rem; }
+.history-head .hh-actions { display: flex; align-items: center; gap: 0.55rem; }
+.history-head .hist-dl { width: 32px; height: 32px; font-size: 1rem; }
 .history-head .chevron { transition: transform 0.2s; color: var(--muted); }
 .history-card.open .chevron { transform: rotate(180deg); }
 

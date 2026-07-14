@@ -310,7 +310,6 @@
     var count = state.history.length;
     $("#historyCount").textContent = count + " month" + (count === 1 ? "" : "s") + " recorded";
     $("#exportCsvBtn").hidden = count === 0;
-    if (count === 0) { $("#exportPanel").hidden = true; }
 
     var wrap = $("#historyRecords");
     wrap.innerHTML = "";
@@ -327,8 +326,14 @@
       head.innerHTML =
         '<div class="hh-left"><span class="hh-month">' + esc(rec.month) + "</span>" +
           '<span class="hh-total">' + total + " leads</span></div>" +
-        '<i class="ti ti-chevron-down chevron"></i>';
-      head.addEventListener("click", function () {
+        '<div class="hh-actions">' +
+          '<button class="icon-btn hist-dl" title="Download ' + esc(rec.month) + ' as CSV" ' +
+            'aria-label="Download ' + esc(rec.month) + ' CSV"><i class="ti ti-download"></i></button>' +
+          '<i class="ti ti-chevron-down chevron"></i>' +
+        "</div>";
+      head.addEventListener("click", function (e) {
+        // Download button lives inside the header — don't toggle the card for it.
+        if (e.target.closest(".hist-dl")) { e.stopPropagation(); downloadMonth(hi); return; }
         var open = card.classList.toggle("open");
         if (open && !charts[hi]) buildChart(card, rec, hi);
       });
@@ -512,10 +517,10 @@
   }
 
   /* ---------- CSV export ---------- */
-  function buildCsv() {
+  function buildCsv(records) {
     var rows = ['"Month","Segment","Member","Leads","BB"'];
     var q = function (v) { return '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"'; };
-    state.history.forEach(function (rec) {
+    records.forEach(function (rec) {
       rec.sections.forEach(function (sec) {
         sec.members.forEach(function (m) {
           rows.push([
@@ -525,27 +530,36 @@
         });
       });
     });
-    return rows.join("\r\n");
+    return rows.join("\r\n") + "\r\n";
   }
 
+  function slug(s) {
+    return String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  }
+
+  function downloadCsv(filename, csv) {
+    // Prepend a UTF-8 BOM so Excel reads it correctly; a Blob preserves CRLF.
+    var blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  function downloadMonth(hi) {
+    var rec = state.history[hi];
+    if (!rec) return;
+    downloadCsv("anz-leads-" + (slug(rec.month) || "month") + ".csv", buildCsv([rec]));
+  }
+
+  // Toolbar button downloads every recorded month in a single file.
   $("#exportCsvBtn").addEventListener("click", function () {
-    var panel = $("#exportPanel");
-    if (!panel.hidden) { panel.hidden = true; return; } // toggle closed
-    $("#csvText").value = buildCsv();
-    $("#copiedMsg").hidden = true;
-    panel.hidden = false;
-  });
-  $("#dismissCsvBtn").addEventListener("click", function () { $("#exportPanel").hidden = true; });
-  $("#copyCsvBtn").addEventListener("click", function () {
-    var ta = $("#csvText");
-    ta.focus(); ta.select();
-    try {
-      document.execCommand("copy");
-      var msg = $("#copiedMsg");
-      msg.hidden = false;
-      setTimeout(function () { msg.hidden = true; }, 2000);
-    } catch (e) { /* clipboard blocked */ }
-    window.getSelection && window.getSelection().removeAllRanges();
+    if (!state.history.length) return;
+    downloadCsv("anz-leads-all.csv", buildCsv(state.history));
   });
 
   /* ---------- Tabs ---------- */

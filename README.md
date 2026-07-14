@@ -17,7 +17,9 @@ data lives in the browser's `localStorage`.
   (merge).
 - **History** — collapsible month cards showing the per-segment/per-member breakdown plus a
   **Chart.js** bar chart of leads per member (built lazily when a card is opened).
-- **CSV export** — copy-to-clipboard export panel (UTF-8, CRLF, quoted fields).
+- **CSV download** — a download button on each month card exports just that month's data
+  as a `.csv` file; the toolbar button downloads all months at once (UTF-8 with BOM, CRLF,
+  quoted fields).
 - **Light / dark theme** — follows your OS preference, with a manual toggle in the header.
 - Responsive down to 360px; seed data on first load.
 
