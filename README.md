@@ -1,34 +1,39 @@
-# LeadDist
+# ANZ Zoho Lead Distribution Tracker
 
-Lead Distribution tracker for my team.
-
-A lightweight, single-page web app to track and distribute sales leads across your team.
-No backend — all data is stored in your browser's `localStorage`, so it runs anywhere,
-including GitHub Pages.
+A browser-based single-page app for tracking monthly lead assignments across sales team
+members, organised by segment. Real-time counters, end-of-month archiving with duplicate
+protection, historical dashboards with charts, and CSV export. No backend, no auth — all
+data lives in the browser's `localStorage`.
 
 **Live app:** https://thilbad.github.io/leaddist/
 
 ## Features
 
-- **Dashboard** — totals, pipeline value, won count/value, conversion rate, and unassigned count.
-- **Distribution view** — bar chart of how many leads each rep holds, plus one-click
-  **auto-assign** that spreads unassigned leads round-robin to active reps by current load.
-- **Leads** — add / edit / delete, search, filter by status/rep/source, sort columns, and
-  reassign inline from the table.
-- **Team** — manage reps, mark them active/inactive, and see per-rep leads, wins, and pipeline.
-- **Data** — export to JSON or CSV, import from JSON, and reset.
+- **Tracker** — segments (Retail, Mid Market, Mid Market – SOS) each with member cards.
+  Increment/decrement leads (and a **BB** counter on applicable segments), add/remove members,
+  live section subtotals and a grand total in the header.
+- **Close month** — snapshots current counts to history and resets counters, with a
+  confirmation modal. If the month already exists, choose **Replace** or **Add to existing**
+  (merge).
+- **History** — collapsible month cards showing the per-segment/per-member breakdown plus a
+  **Chart.js** bar chart of leads per member (built lazily when a card is opened).
+- **CSV export** — copy-to-clipboard export panel (UTF-8, CRLF, quoted fields).
+- **Light / dark theme** — follows your OS preference, with a manual toggle in the header.
+- Responsive down to 360px; seed data on first load.
 
 ## Tech
 
-Plain HTML, CSS, and vanilla JavaScript — no build step and no dependencies.
+Plain HTML, CSS, and vanilla JavaScript — no build step.
 
-- `index.html` — markup
-- `styles.css` — styling
-- `app.js` — state, rendering, and logic
+- `index.html` — markup, loads Chart.js and Tabler Icons from CDN
+- `styles.css` — theming (CSS custom properties for light/dark) and layout
+- `app.js` — state, rendering, interactions, close-month flow, CSV, charts
+
+Persistence key: `localStorage["anz_v3"]`.
 
 ## Running locally
 
-Just open `index.html` in a browser, or serve the folder:
+Open `index.html` in a browser, or serve the folder:
 
 ```bash
 python3 -m http.server 8000
@@ -38,5 +43,5 @@ python3 -m http.server 8000
 ## Deployment
 
 Pushing to `main` triggers the GitHub Actions workflow in
-[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml), which builds and publishes
-the site to GitHub Pages automatically.
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml), which publishes the site to
+GitHub Pages automatically.

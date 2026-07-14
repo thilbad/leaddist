@@ -1,501 +1,556 @@
-/* LeadDist — client-side lead distribution tracker.
- * State persists in localStorage. No backend, safe for GitHub Pages. */
+/* ANZ Zoho Lead Distribution Tracker
+ * Single-page app. State persists in localStorage under `anz_v3`.
+ * No backend, no auth — safe to host on GitHub Pages. */
 (function () {
   "use strict";
 
-  const STORAGE_KEY = "leaddist.v1";
-  const STATUSES = ["New", "Contacted", "Qualified", "Won", "Lost"];
-  const SOURCES = ["Website", "Referral", "Cold Call", "Event", "Social", "Other"];
-  const AVATAR_COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#38bdf8", "#ec4899", "#a855f7", "#14b8a6", "#ef4444"];
+  var STORAGE_KEY = "anz_v3";
+  var THEME_KEY = "anz_theme";
+
+  /* Avatar background/foreground pairs, assigned by member index mod 8. */
+  var AVATAR_COLORS = [
+    { bg: "#E6F1FB", fg: "#185FA5" },
+    { bg: "#E1F5EE", fg: "#0F6E56" },
+    { bg: "#EEEDFE", fg: "#534AB7" },
+    { bg: "#FAECE7", fg: "#993C1D" },
+    { bg: "#FAEEDA", fg: "#854F0B" },
+    { bg: "#EAF3DE", fg: "#3B6D11" },
+    { bg: "#FBEAF0", fg: "#993556" },
+    { bg: "#FCEBEB", fg: "#A32D2D" },
+  ];
+  /* Progress-bar / chart-bar colours, assigned by member index mod 8. */
+  var BAR_COLORS = ["#2a78d6", "#1baf7a", "#eda100", "#4a3aa7", "#e34948", "#e87ba4", "#eb6834", "#008300"];
 
   /* ---------- State ---------- */
-  let state = load();
-  let sortKey = "name";
-  let sortDir = 1;
+  var state = load();
+  var charts = {}; // history index -> Chart instance
+
+  function defaultState() {
+    return {
+      sections: [
+        {
+          id: "retail", label: "Retail", hasBB: false,
+          members: [
+            { name: "Ashutosh", leads: 27 },
+            { name: "Jack", leads: 25 },
+            { name: "Naman", leads: 28 },
+            { name: "Noah", leads: 15 },
+          ],
+        },
+        {
+          id: "midmarket", label: "Mid Market", hasBB: true,
+          members: [
+            { name: "Grant", leads: 16, bb: 1 },
+            { name: "Karthik", leads: 14, bb: 1 },
+          ],
+        },
+        {
+          id: "midmarket_sos", label: "Mid Market – SOS", hasBB: true,
+          members: [
+            { name: "Grant", leads: 0, bb: 0 },
+            { name: "Karthik", leads: 0, bb: 0 },
+          ],
+        },
+      ],
+      history: [],
+    };
+  }
 
   function load() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) return JSON.parse(raw);
-    } catch (e) { /* fall through to seed */ }
-    return seed();
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.sections) && Array.isArray(parsed.history)) return parsed;
+      }
+    } catch (e) { /* fall through */ }
+    return defaultState();
   }
 
   function save() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }
 
-  function uid() {
-    return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-  }
-
-  function seed() {
-    const reps = [
-      { id: uid(), name: "Alex Rivera", email: "alex@team.co", active: true },
-      { id: uid(), name: "Jordan Lee", email: "jordan@team.co", active: true },
-      { id: uid(), name: "Sam Patel", email: "sam@team.co", active: true },
-    ];
-    const demoLeads = [
-      ["Maria Gomez", "Nimbus Cloud", "Website", 12000, "Qualified", 0],
-      ["Tom Becker", "Becker & Co", "Referral", 8000, "Contacted", 1],
-      ["Lena Fischer", "BrightApps", "Event", 25000, "New", null],
-      ["Chris Yamada", "Yamada Retail", "Cold Call", 5000, "Won", 2],
-      ["Priya Nair", "Delta Health", "Social", 15000, "New", null],
-      ["Owen Clarke", "Clarke Legal", "Website", 3000, "Lost", 0],
-      ["Nadia Rossi", "Rossi Foods", "Referral", 18000, "Qualified", 1],
-    ];
-    const leads = demoLeads.map(function (d, i) {
-      return {
-        id: uid(),
-        name: d[0], company: d[1], email: "", phone: "",
-        source: d[2], value: d[3], status: d[4],
-        repId: d[5] === null ? null : reps[d[5]].id,
-        notes: "", createdAt: Date.now() - i * 86400000,
-      };
-    });
-    return { reps: reps, leads: leads };
-  }
-
   /* ---------- Helpers ---------- */
-  const $ = function (sel, root) { return (root || document).querySelector(sel); };
-  const $$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
-  const esc = function (s) {
+  function $(sel, root) { return (root || document).querySelector(sel); }
+  function el(tag, cls, html) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (html != null) e.innerHTML = html;
+    return e;
+  }
+  function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
     });
-  };
-  const money = function (n) { return "$" + Number(n || 0).toLocaleString(); };
-  const repById = function (id) { return state.reps.find(function (r) { return r.id === id; }); };
-  const repName = function (id) { const r = repById(id); return r ? r.name : "Unassigned"; };
-  const avatarColor = function (id) {
-    const i = state.reps.findIndex(function (r) { return r.id === id; });
-    return AVATAR_COLORS[(i < 0 ? 0 : i) % AVATAR_COLORS.length];
-  };
-  const initials = function (name) {
-    return name.split(/\s+/).map(function (w) { return w[0]; }).slice(0, 2).join("").toUpperCase();
-  };
-
-  function toast(msg) {
-    const t = $("#toast");
-    t.textContent = msg;
-    t.hidden = false;
-    clearTimeout(toast._t);
-    toast._t = setTimeout(function () { t.hidden = true; }, 2200);
+  }
+  function initials(name) {
+    var parts = String(name).trim().split(/\s+/);
+    var s = parts[0] ? parts[0][0] : "";
+    if (parts.length > 1) s += parts[parts.length - 1][0];
+    return s.toUpperCase();
+  }
+  function currentMonth() {
+    var d = new Date();
+    return d.toLocaleString("en-US", { month: "long" }) + " " + d.getFullYear();
+  }
+  function sectionSubtotal(sec) {
+    return sec.members.reduce(function (t, m) { return t + (m.leads || 0); }, 0);
+  }
+  function grandTotal() {
+    return state.sections.reduce(function (t, s) { return t + sectionSubtotal(s); }, 0);
   }
 
-  /* ---------- Rendering ---------- */
-  function renderAll() {
-    renderDashboard();
-    renderLeads();
-    renderReps();
-    populateFilters();
-  }
-
-  function renderDashboard() {
-    const leads = state.leads;
-    const total = leads.length;
-    const won = leads.filter(function (l) { return l.status === "Won"; });
-    const unassigned = leads.filter(function (l) { return !l.repId; }).length;
-    const pipeline = leads
-      .filter(function (l) { return l.status !== "Lost"; })
-      .reduce(function (s, l) { return s + Number(l.value || 0); }, 0);
-    const wonValue = won.reduce(function (s, l) { return s + Number(l.value || 0); }, 0);
-    const closed = leads.filter(function (l) { return l.status === "Won" || l.status === "Lost"; }).length;
-    const convRate = closed ? Math.round((won.length / closed) * 100) : 0;
-
-    const cards = [
-      { label: "Total leads", value: total, cls: "accent" },
-      { label: "Unassigned", value: unassigned, sub: unassigned ? "needs distribution" : "all assigned" },
-      { label: "Pipeline value", value: money(pipeline), sub: "excl. lost" },
-      { label: "Won", value: won.length, sub: money(wonValue), cls: "green" },
-      { label: "Conversion", value: convRate + "%", sub: closed + " closed" },
-      { label: "Active reps", value: state.reps.filter(function (r) { return r.active; }).length },
-    ];
-    $("#statGrid").innerHTML = cards.map(function (c) {
-      return '<div class="stat ' + (c.cls || "") + '">' +
-        '<div class="label">' + c.label + '</div>' +
-        '<div class="value">' + c.value + '</div>' +
-        (c.sub ? '<div class="sub">' + c.sub + '</div>' : "") +
-        '</div>';
-    }).join("");
-
-    // Distribution by rep
-    const counts = state.reps.map(function (r) {
-      return { rep: r, n: leads.filter(function (l) { return l.repId === r.id; }).length };
+  /* ---------- Theme ---------- */
+  function initTheme() {
+    var saved = localStorage.getItem(THEME_KEY);
+    var dark = saved ? saved === "dark"
+      : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    applyTheme(dark);
+    $("#themeToggle").addEventListener("click", function () {
+      var isDark = document.documentElement.getAttribute("data-theme") === "dark";
+      applyTheme(!isDark);
+      localStorage.setItem(THEME_KEY, !isDark ? "dark" : "light");
+      if ($("#panel-history").classList.contains("active")) renderHistory();
     });
-    const unassignedCount = unassigned;
-    const max = Math.max(1, unassignedCount, counts.reduce(function (m, c) { return Math.max(m, c.n); }, 0));
-    let rows = counts.map(function (c) {
-      const w = Math.round((c.n / max) * 100);
-      return '<div class="dist-row">' +
-        '<div class="name">' + esc(c.rep.name) + (c.rep.active ? "" : ' <span class="off">(inactive)</span>') + '</div>' +
-        '<div class="dist-bar"><span style="width:' + w + '%"></span></div>' +
-        '<div class="count">' + c.n + '</div></div>';
-    }).join("");
-    if (unassignedCount > 0) {
-      const w = Math.round((unassignedCount / max) * 100);
-      rows += '<div class="dist-row">' +
-        '<div class="name off">Unassigned</div>' +
-        '<div class="dist-bar"><span style="width:' + w + '%;background:linear-gradient(90deg,#64748b,#94a3b8)"></span></div>' +
-        '<div class="count">' + unassignedCount + '</div></div>';
+  }
+  function applyTheme(dark) {
+    document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+    $("#themeToggle").innerHTML = '<i class="ti ti-' + (dark ? "sun" : "moon") + '"></i>';
+  }
+
+  /* ---------- Tracker render ---------- */
+  function renderHeader() {
+    var m = currentMonth();
+    $("#subtitle").textContent = "Tracking " + m;
+    var n = grandTotal();
+    $("#grandTotal").textContent = n + " total lead" + (n === 1 ? "" : "s");
+    $("#closeBarText").textContent =
+      "Ready to close " + m + "? Snapshot this month and reset all counters.";
+  }
+
+  function renderTracker() {
+    // Preserve focus/value of an add-member input across re-render.
+    var active = document.activeElement;
+    var focusSid = null, focusVal = "", focusCaret = 0;
+    if (active && active.classList && active.classList.contains("add-input")) {
+      focusSid = active.getAttribute("data-add");
+      focusVal = active.value;
+      focusCaret = active.selectionStart || focusVal.length;
     }
-    $("#distChart").innerHTML = rows || '<p class="empty">Add reps and leads to see distribution.</p>';
 
-    // Status & source breakdown
-    renderBreakdown("#statusChart", STATUSES, "status", {
-      New: "#38bdf8", Contacted: "#818cf8", Qualified: "#f59e0b", Won: "#22c55e", Lost: "#ef4444",
+    var wrap = $("#sections");
+    wrap.innerHTML = "";
+    state.sections.forEach(function (sec) {
+      var maxLeads = sec.members.reduce(function (mx, m) { return Math.max(mx, m.leads || 0); }, 0);
+
+      var secEl = el("div", "section");
+      var head = el("div", "section-head");
+      head.appendChild(el("h2", null, esc(sec.label)));
+      head.appendChild(el("span", "section-subtotal", sectionSubtotal(sec) + " leads"));
+      secEl.appendChild(head);
+
+      var grid = el("div", "member-grid");
+      sec.members.forEach(function (m, idx) {
+        grid.appendChild(memberCard(sec, m, idx, maxLeads));
+      });
+      secEl.appendChild(grid);
+
+      // Add-member row
+      var addRow = el("div", "add-member");
+      var input = el("input");
+      input.className = "add-input";
+      input.type = "text";
+      input.maxLength = 25;
+      input.placeholder = "Add member…";
+      input.setAttribute("data-add", sec.id);
+      var addBtn = el("button", "btn", '<i class="ti ti-plus"></i> Add');
+      addBtn.setAttribute("data-addbtn", sec.id);
+      addRow.appendChild(input);
+      addRow.appendChild(addBtn);
+      secEl.appendChild(addRow);
+
+      wrap.appendChild(secEl);
     });
-    renderBreakdown("#sourceChart", SOURCES, "source", null);
-  }
 
-  function renderBreakdown(sel, keys, field, colorMap) {
-    const leads = state.leads;
-    const max = Math.max(1, keys.reduce(function (m, k) {
-      return Math.max(m, leads.filter(function (l) { return l[field] === k; }).length);
-    }, 0));
-    $(sel).innerHTML = keys.map(function (k, i) {
-      const n = leads.filter(function (l) { return l[field] === k; }).length;
-      const w = Math.round((n / max) * 100);
-      const color = colorMap ? colorMap[k] : AVATAR_COLORS[i % AVATAR_COLORS.length];
-      return '<div class="bl-row"><div>' + esc(k) + '</div>' +
-        '<div class="bl-bar"><span style="width:' + w + '%;background:' + color + '"></span></div>' +
-        '<div>' + n + '</div></div>';
-    }).join("");
-  }
+    renderHeader();
 
-  function getFilteredLeads() {
-    const q = $("#leadSearch").value.trim().toLowerCase();
-    const fs = $("#filterStatus").value;
-    const fr = $("#filterRep").value;
-    const fsrc = $("#filterSource").value;
-    let list = state.leads.filter(function (l) {
-      if (fs && l.status !== fs) return false;
-      if (fsrc && l.source !== fsrc) return false;
-      if (fr === "__none__") { if (l.repId) return false; }
-      else if (fr && l.repId !== fr) return false;
-      if (q) {
-        const hay = (l.name + " " + l.company + " " + l.email + " " + l.phone).toLowerCase();
-        if (hay.indexOf(q) === -1) return false;
+    // Restore focus
+    if (focusSid) {
+      var restore = wrap.querySelector('.add-input[data-add="' + CSS.escape(focusSid) + '"]');
+      if (restore) {
+        restore.value = focusVal;
+        restore.focus();
+        try { restore.setSelectionRange(focusCaret, focusCaret); } catch (e) {}
       }
-      return true;
-    });
-    list.sort(function (a, b) {
-      let va = a[sortKey], vb = b[sortKey];
-      if (sortKey === "repId") { va = repName(a.repId); vb = repName(b.repId); }
-      if (typeof va === "number" && typeof vb === "number") return (va - vb) * sortDir;
-      return String(va).localeCompare(String(vb)) * sortDir;
-    });
-    return list;
-  }
-
-  function renderLeads() {
-    const list = getFilteredLeads();
-    const repOpts = function (sel) {
-      return '<option value=""' + (!sel ? " selected" : "") + '>— Unassigned —</option>' +
-        state.reps.map(function (r) {
-          return '<option value="' + r.id + '"' + (r.id === sel ? " selected" : "") + '>' + esc(r.name) + '</option>';
-        }).join("");
-    };
-    $("#leadsBody").innerHTML = list.map(function (l) {
-      return '<tr data-id="' + l.id + '">' +
-        '<td><strong>' + esc(l.name) + '</strong>' + (l.email ? '<div class="sub">' + esc(l.email) + '</div>' : "") + '</td>' +
-        '<td>' + esc(l.company || "—") + '</td>' +
-        '<td>' + esc(l.source) + '</td>' +
-        '<td>' + money(l.value) + '</td>' +
-        '<td><span class="badge ' + l.status + '">' + l.status + '</span></td>' +
-        '<td><select class="assign-select" data-assign="' + l.id + '">' + repOpts(l.repId) + '</select></td>' +
-        '<td style="white-space:nowrap">' +
-          '<button class="btn-icon" data-edit="' + l.id + '" title="Edit">✏️</button>' +
-          '<button class="btn-icon" data-del="' + l.id + '" title="Delete">🗑</button>' +
-        '</td></tr>';
-    }).join("");
-    $("#leadsEmpty").hidden = list.length !== 0;
-  }
-
-  function renderReps() {
-    const wrap = $("#repCards");
-    $("#repsEmpty").hidden = state.reps.length !== 0;
-    wrap.innerHTML = state.reps.map(function (r) {
-      const assigned = state.leads.filter(function (l) { return l.repId === r.id; });
-      const won = assigned.filter(function (l) { return l.status === "Won"; });
-      const value = assigned
-        .filter(function (l) { return l.status !== "Lost"; })
-        .reduce(function (s, l) { return s + Number(l.value || 0); }, 0);
-      return '<div class="rep-card">' +
-        '<div class="rep-top">' +
-          '<div class="avatar" style="background:' + avatarColor(r.id) + '">' + initials(r.name) + '</div>' +
-          '<div><h3>' + esc(r.name) + '</h3><div class="rep-email">' + esc(r.email || "") + '</div></div>' +
-        '</div>' +
-        '<span class="pill ' + (r.active ? "on" : "off") + '">' + (r.active ? "Active" : "Inactive") + '</span>' +
-        '<div class="rep-metrics">' +
-          '<div><span class="m-val">' + assigned.length + '</span><span class="m-lab">Leads</span></div>' +
-          '<div><span class="m-val">' + won.length + '</span><span class="m-lab">Won</span></div>' +
-          '<div><span class="m-val">' + money(value) + '</span><span class="m-lab">Pipeline</span></div>' +
-        '</div>' +
-        '<div class="rep-actions">' +
-          '<button class="btn btn-sm" data-editrep="' + r.id + '">Edit</button>' +
-          '<button class="btn btn-sm btn-danger" data-delrep="' + r.id + '">Delete</button>' +
-        '</div></div>';
-    }).join("");
-  }
-
-  function populateFilters() {
-    const statusSel = '<option value="">All statuses</option>' +
-      STATUSES.map(function (s) { return '<option>' + s + '</option>'; }).join("");
-    const sourceSel = '<option value="">All sources</option>' +
-      SOURCES.map(function (s) { return '<option>' + s + '</option>'; }).join("");
-    const repSel = '<option value="">All reps</option><option value="__none__">Unassigned</option>' +
-      state.reps.map(function (r) { return '<option value="' + r.id + '">' + esc(r.name) + '</option>'; }).join("");
-    setSelect("#filterStatus", statusSel);
-    setSelect("#filterSource", sourceSel);
-    setSelect("#filterRep", repSel);
-  }
-  function setSelect(sel, html) {
-    const el = $(sel);
-    const prev = el.value;
-    el.innerHTML = html;
-    el.value = prev;
-  }
-
-  /* ---------- Lead modal ---------- */
-  function openLeadModal(lead) {
-    $("#leadModalTitle").textContent = lead ? "Edit lead" : "Add lead";
-    $("#leadId").value = lead ? lead.id : "";
-    $("#f_name").value = lead ? lead.name : "";
-    $("#f_company").value = lead ? lead.company : "";
-    $("#f_email").value = lead ? lead.email : "";
-    $("#f_phone").value = lead ? lead.phone : "";
-    $("#f_value").value = lead ? lead.value : 0;
-    $("#f_notes").value = lead ? lead.notes : "";
-    $("#f_source").innerHTML = SOURCES.map(function (s) { return '<option>' + s + '</option>'; }).join("");
-    $("#f_status").innerHTML = STATUSES.map(function (s) { return '<option>' + s + '</option>'; }).join("");
-    $("#f_rep").innerHTML = '<option value="">— Unassigned —</option>' +
-      state.reps.map(function (r) { return '<option value="' + r.id + '">' + esc(r.name) + '</option>'; }).join("");
-    $("#f_source").value = lead ? lead.source : "Website";
-    $("#f_status").value = lead ? lead.status : "New";
-    $("#f_rep").value = lead && lead.repId ? lead.repId : "";
-    $("#leadModal").hidden = false;
-    $("#f_name").focus();
-  }
-
-  $("#leadForm").addEventListener("submit", function (e) {
-    e.preventDefault();
-    const id = $("#leadId").value;
-    const data = {
-      name: $("#f_name").value.trim(),
-      company: $("#f_company").value.trim(),
-      email: $("#f_email").value.trim(),
-      phone: $("#f_phone").value.trim(),
-      source: $("#f_source").value,
-      value: Number($("#f_value").value) || 0,
-      status: $("#f_status").value,
-      repId: $("#f_rep").value || null,
-      notes: $("#f_notes").value.trim(),
-    };
-    if (id) {
-      const lead = state.leads.find(function (l) { return l.id === id; });
-      Object.assign(lead, data);
-      toast("Lead updated");
-    } else {
-      data.id = uid();
-      data.createdAt = Date.now();
-      state.leads.push(data);
-      toast("Lead added");
     }
-    save();
-    $("#leadModal").hidden = true;
-    renderAll();
+  }
+
+  function memberCard(sec, m, idx, maxLeads) {
+    var av = AVATAR_COLORS[idx % 8];
+    var bar = BAR_COLORS[idx % 8];
+    var pct = maxLeads > 0 ? Math.round(((m.leads || 0) / maxLeads) * 100) : 0;
+
+    var card = el("div", "member-card");
+
+    var remove = el("button", "mc-remove", '<i class="ti ti-x"></i>');
+    remove.title = "Remove member";
+    remove.setAttribute("data-remove", sec.id + "|" + idx);
+    card.appendChild(remove);
+
+    var headHtml =
+      '<span class="avatar" style="background:' + av.bg + ';color:' + av.fg + '">' + esc(initials(m.name)) + "</span>" +
+      '<span class="mc-name" title="' + esc(m.name) + '">' + esc(m.name) + "</span>";
+    card.appendChild(el("div", "mc-head", headHtml));
+
+    card.appendChild(el("div", "mc-count", String(m.leads || 0)));
+    card.appendChild(el("div", "mc-label", (m.leads === 1 ? "lead" : "leads")));
+
+    var prog = el("div", "progress", '<span style="width:' + pct + "%;background:" + bar + '"></span>');
+    card.appendChild(prog);
+
+    if (sec.hasBB) {
+      var bb = el("div", "bb-row");
+      bb.innerHTML =
+        '<span class="bb-label">BB</span>' +
+        '<div class="counter-group">' +
+          '<button class="step" data-bb="' + sec.id + "|" + idx + '|dec">−</button>' +
+          '<span class="cval">' + (m.bb || 0) + "</span>" +
+          '<button class="step" data-bb="' + sec.id + "|" + idx + '|inc">+</button>' +
+        "</div>";
+      card.appendChild(bb);
+    }
+
+    var lead = el("div", "lead-controls");
+    lead.innerHTML =
+      '<button class="step" data-lead="' + sec.id + "|" + idx + '|dec">−</button>' +
+      '<button class="step" data-lead="' + sec.id + "|" + idx + '|inc">+</button>';
+    card.appendChild(lead);
+
+    return card;
+  }
+
+  /* ---------- Tracker interactions ---------- */
+  function findMember(sid, idx) {
+    var sec = state.sections.find(function (s) { return s.id === sid; });
+    if (!sec) return null;
+    return { sec: sec, m: sec.members[idx] };
+  }
+
+  $("#sections").addEventListener("click", function (e) {
+    var t;
+    if ((t = e.target.closest("[data-lead]"))) {
+      var p = t.getAttribute("data-lead").split("|");
+      var ref = findMember(p[0], +p[1]); if (!ref) return;
+      ref.m.leads = Math.max(0, (ref.m.leads || 0) + (p[2] === "inc" ? 1 : -1));
+      save(); renderTracker();
+    } else if ((t = e.target.closest("[data-bb]"))) {
+      var pb = t.getAttribute("data-bb").split("|");
+      var rb = findMember(pb[0], +pb[1]); if (!rb) return;
+      rb.m.bb = Math.max(0, (rb.m.bb || 0) + (pb[2] === "inc" ? 1 : -1));
+      save(); renderTracker();
+    } else if ((t = e.target.closest("[data-remove]"))) {
+      var pr = t.getAttribute("data-remove").split("|");
+      var sec = state.sections.find(function (s) { return s.id === pr[0]; });
+      if (sec) { sec.members.splice(+pr[1], 1); save(); renderTracker(); }
+    } else if ((t = e.target.closest("[data-addbtn]"))) {
+      addMember(t.getAttribute("data-addbtn"));
+    }
   });
 
-  /* ---------- Rep modal ---------- */
-  function openRepModal(rep) {
-    $("#repModalTitle").textContent = rep ? "Edit rep" : "Add rep";
-    $("#repId").value = rep ? rep.id : "";
-    $("#r_name").value = rep ? rep.name : "";
-    $("#r_email").value = rep ? rep.email : "";
-    $("#r_active").checked = rep ? rep.active : true;
-    $("#repModal").hidden = false;
-    $("#r_name").focus();
-  }
-
-  $("#repForm").addEventListener("submit", function (e) {
-    e.preventDefault();
-    const id = $("#repId").value;
-    const data = {
-      name: $("#r_name").value.trim(),
-      email: $("#r_email").value.trim(),
-      active: $("#r_active").checked,
-    };
-    if (id) {
-      Object.assign(repById(id), data);
-      toast("Rep updated");
-    } else {
-      data.id = uid();
-      state.reps.push(data);
-      toast("Rep added");
+  $("#sections").addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && e.target.classList.contains("add-input")) {
+      e.preventDefault();
+      addMember(e.target.getAttribute("data-add"));
     }
-    save();
-    $("#repModal").hidden = true;
-    renderAll();
   });
 
-  /* ---------- Auto-assign (round-robin by current load) ---------- */
-  function autoAssign() {
-    const active = state.reps.filter(function (r) { return r.active; });
-    if (!active.length) { toast("Add an active rep first"); return; }
-    const unassigned = state.leads.filter(function (l) { return !l.repId; });
-    if (!unassigned.length) { toast("No unassigned leads"); return; }
-    // Load map seeded with current counts so distribution stays balanced.
-    const load = {};
-    active.forEach(function (r) {
-      load[r.id] = state.leads.filter(function (l) { return l.repId === r.id; }).length;
-    });
-    unassigned.forEach(function (lead) {
-      // pick the active rep with the smallest current load
-      let target = active[0];
-      active.forEach(function (r) { if (load[r.id] < load[target.id]) target = r; });
-      lead.repId = target.id;
-      load[target.id]++;
-    });
+  function addMember(sid) {
+    var input = $('.add-input[data-add="' + CSS.escape(sid) + '"]');
+    if (!input) return;
+    var name = input.value.trim();
+    if (!name) { input.focus(); return; }
+    var sec = state.sections.find(function (s) { return s.id === sid; });
+    if (!sec) return;
+    var dup = sec.members.some(function (m) { return m.name.toLowerCase() === name.toLowerCase(); });
+    if (dup) {
+      input.classList.add("error");
+      setTimeout(function () { input.classList.remove("error"); }, 1400);
+      return;
+    }
+    var member = { name: name, leads: 0 };
+    if (sec.hasBB) member.bb = 0;
+    sec.members.push(member);
     save();
-    renderAll();
-    toast("Assigned " + unassigned.length + " lead" + (unassigned.length > 1 ? "s" : ""));
+    renderTracker();
+    // Keep focus in that section's (now empty) add input.
+    var again = $('.add-input[data-add="' + CSS.escape(sid) + '"]');
+    if (again) { again.value = ""; again.focus(); }
   }
 
-  /* ---------- Import / Export ---------- */
-  function download(filename, text, type) {
-    const blob = new Blob([text], { type: type || "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = filename;
-    document.body.appendChild(a); a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
+  /* ---------- History render ---------- */
+  function renderHistory() {
+    // Destroy any existing charts before rebuilding the DOM.
+    Object.keys(charts).forEach(function (k) { try { charts[k].destroy(); } catch (e) {} });
+    charts = {};
 
-  function exportCsv() {
-    const head = ["Name", "Company", "Email", "Phone", "Source", "Value", "Status", "Assigned To", "Notes"];
-    const rows = state.leads.map(function (l) {
-      return [l.name, l.company, l.email, l.phone, l.source, l.value, l.status, repName(l.repId), l.notes]
-        .map(function (v) { return '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"'; })
-        .join(",");
+    var count = state.history.length;
+    $("#historyCount").textContent = count + " month" + (count === 1 ? "" : "s") + " recorded";
+    $("#exportCsvBtn").hidden = count === 0;
+    if (count === 0) { $("#exportPanel").hidden = true; }
+
+    var wrap = $("#historyRecords");
+    wrap.innerHTML = "";
+    if (count === 0) {
+      wrap.appendChild(el("div", "empty", "No history yet. Close your first month to see data here."));
+      return;
+    }
+
+    state.history.forEach(function (rec, hi) {
+      var total = rec.sections.reduce(function (t, s) { return t + sectionSubtotal(s); }, 0);
+      var card = el("div", "history-card");
+
+      var head = el("div", "history-head");
+      head.innerHTML =
+        '<div class="hh-left"><span class="hh-month">' + esc(rec.month) + "</span>" +
+          '<span class="hh-total">' + total + " leads</span></div>" +
+        '<i class="ti ti-chevron-down chevron"></i>';
+      head.addEventListener("click", function () {
+        var open = card.classList.toggle("open");
+        if (open && !charts[hi]) buildChart(card, rec, hi);
+      });
+      card.appendChild(head);
+
+      var body = el("div", "history-body");
+      rec.sections.forEach(function (sec) {
+        var s = el("div", "hist-section");
+        s.appendChild(el("h3", null,
+          esc(sec.label) + ' <span class="hs-total">(' + sectionSubtotal(sec) + ")</span>"));
+        sec.members.forEach(function (m, idx) {
+          var av = AVATAR_COLORS[idx % 8];
+          var row = el("div", "hist-member");
+          row.innerHTML =
+            '<div class="hm-left"><span class="avatar" style="background:' + av.bg + ";color:" + av.fg +
+              '">' + esc(initials(m.name)) + "</span>" + esc(m.name) + "</div>" +
+            '<div class="hm-right">' +
+              (sec.hasBB ? "<span>BB " + (m.bb || 0) + "</span>" : "") +
+              "<span><strong>" + (m.leads || 0) + "</strong> leads</span>" +
+            "</div>";
+          s.appendChild(row);
+        });
+        body.appendChild(s);
+      });
+
+      var chartWrap = el("div", "chart-wrap");
+      chartWrap.appendChild(el("canvas"));
+      body.appendChild(chartWrap);
+      card.appendChild(body);
+      wrap.appendChild(card);
     });
-    download("leads.csv", head.join(",") + "\n" + rows.join("\n"), "text/csv");
   }
 
-  function importJson(file) {
-    const reader = new FileReader();
-    reader.onload = function () {
-      try {
-        const data = JSON.parse(reader.result);
-        if (!data || !Array.isArray(data.reps) || !Array.isArray(data.leads)) {
-          throw new Error("bad shape");
+  function buildChart(card, rec, hi) {
+    if (typeof Chart === "undefined") return;
+    var canvas = card.querySelector("canvas");
+    if (!canvas) return;
+
+    // Sum leads per member name across all sections in this month.
+    var order = [];
+    var totals = {};
+    rec.sections.forEach(function (sec) {
+      sec.members.forEach(function (m) {
+        if (!(m.name in totals)) { totals[m.name] = 0; order.push(m.name); }
+        totals[m.name] += (m.leads || 0);
+      });
+    });
+    var labels = order;
+    var data = order.map(function (n) { return totals[n]; });
+    var colors = order.map(function (_, i) { return BAR_COLORS[i % 8]; });
+
+    var gridColor = getComputedStyle(document.documentElement).getPropertyValue("--border").trim() || "#e2e7ee";
+    var textColor = getComputedStyle(document.documentElement).getPropertyValue("--muted").trim() || "#667085";
+
+    charts[hi] = new Chart(canvas.getContext("2d"), {
+      type: "bar",
+      data: {
+        labels: labels,
+        datasets: [{ label: "Leads", data: data, backgroundColor: colors, borderRadius: 6 }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: textColor } },
+          y: { beginAtZero: true, grid: { color: gridColor }, ticks: { color: textColor, precision: 0 } },
+        },
+      },
+    });
+  }
+
+  /* ---------- Close month flow ---------- */
+  function snapshot() {
+    return JSON.parse(JSON.stringify(state.sections));
+  }
+  function resetCounters() {
+    state.sections.forEach(function (sec) {
+      sec.members.forEach(function (m) {
+        m.leads = 0;
+        if (sec.hasBB) m.bb = 0;
+      });
+    });
+  }
+  function findHistoryIndex(month) {
+    return state.history.findIndex(function (r) { return r.month === month; });
+  }
+
+  $("#closeMonthBtn").addEventListener("click", function () {
+    var month = currentMonth();
+    var existing = findHistoryIndex(month);
+    if (existing === -1) openConfirmModal(month);
+    else openDuplicateModal(month, existing);
+  });
+
+  function finishClose() {
+    resetCounters();
+    save();
+    closeModal();
+    switchTab("history");
+    renderTracker();
+    renderHistory();
+  }
+
+  function openConfirmModal(month) {
+    var body = el("div", "modal");
+    body.innerHTML =
+      "<h3>Close " + esc(month) + "?</h3>" +
+      "<p>Current lead counts will be saved to history and all counters will reset to zero.</p>" +
+      '<div class="modal-actions">' +
+        '<button class="btn" data-act="cancel">Cancel</button>' +
+        '<button class="btn btn-primary" data-act="confirm">Close month</button>' +
+      "</div>";
+    showModal(body, function (act) {
+      if (act === "confirm") {
+        state.history.unshift({ month: month, date: new Date().toISOString(), sections: snapshot() });
+        finishClose();
+      } else { closeModal(); }
+    });
+  }
+
+  function openDuplicateModal(month, existingIdx) {
+    var body = el("div", "modal");
+    body.innerHTML =
+      '<span class="warn-badge"><i class="ti ti-alert-triangle"></i> Month already closed</span>' +
+      "<h3>" + esc(month) + " already has a record</h3>" +
+      "<p>You can add the current counts on top of the existing record, or replace it entirely with the current counts.</p>" +
+      '<div class="modal-actions">' +
+        '<button class="btn" data-act="cancel">Cancel</button>' +
+        '<button class="btn btn-danger" data-act="replace">Replace</button>' +
+        '<button class="btn btn-primary" data-act="merge">Add to existing</button>' +
+      "</div>";
+    showModal(body, function (act) {
+      if (act === "replace") {
+        state.history[existingIdx] = { month: month, date: new Date().toISOString(), sections: snapshot() };
+        finishClose();
+      } else if (act === "merge") {
+        mergeInto(state.history[existingIdx]);
+        state.history[existingIdx].date = new Date().toISOString();
+        finishClose();
+      } else { closeModal(); }
+    });
+  }
+
+  function mergeInto(record) {
+    state.sections.forEach(function (sec) {
+      var snapSec = record.sections.find(function (s) { return s.id === sec.id; });
+      if (!snapSec) { record.sections.push(JSON.parse(JSON.stringify(sec))); return; }
+      sec.members.forEach(function (m) {
+        var target = snapSec.members.find(function (x) {
+          return x.name.toLowerCase() === m.name.toLowerCase();
+        });
+        if (target) {
+          target.leads = (target.leads || 0) + (m.leads || 0);
+          if (sec.hasBB) target.bb = (target.bb || 0) + (m.bb || 0);
+        } else {
+          snapSec.members.push(JSON.parse(JSON.stringify(m)));
         }
-        state = data;
-        save();
-        renderAll();
-        toast("Data imported");
-      } catch (e) {
-        toast("Import failed: invalid file");
-      }
-    };
-    reader.readAsText(file);
+      });
+    });
   }
 
-  /* ---------- Events ---------- */
-  // Tabs
+  /* ---------- Modal plumbing (inline overlay, not position:fixed) ---------- */
+  function showModal(modalEl, onAction) {
+    closeModal();
+    window.scrollTo(0, 0);
+    var overlay = el("div", "modal-overlay");
+    overlay.appendChild(modalEl);
+    overlay.addEventListener("click", function (e) {
+      var btn = e.target.closest("[data-act]");
+      if (btn) { onAction(btn.getAttribute("data-act")); return; }
+      if (e.target === overlay) closeModal(); // click backdrop = cancel
+    });
+    $("#modalRoot").appendChild(overlay);
+    document.addEventListener("keydown", escClose);
+  }
+  function escClose(e) { if (e.key === "Escape") closeModal(); }
+  function closeModal() {
+    $("#modalRoot").innerHTML = "";
+    document.removeEventListener("keydown", escClose);
+  }
+
+  /* ---------- CSV export ---------- */
+  function buildCsv() {
+    var rows = ['"Month","Segment","Member","Leads","BB"'];
+    var q = function (v) { return '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"'; };
+    state.history.forEach(function (rec) {
+      rec.sections.forEach(function (sec) {
+        sec.members.forEach(function (m) {
+          rows.push([
+            q(rec.month), q(sec.label), q(m.name),
+            q(m.leads || 0), q(sec.hasBB ? (m.bb || 0) : ""),
+          ].join(","));
+        });
+      });
+    });
+    return rows.join("\r\n");
+  }
+
+  $("#exportCsvBtn").addEventListener("click", function () {
+    var panel = $("#exportPanel");
+    if (!panel.hidden) { panel.hidden = true; return; } // toggle closed
+    $("#csvText").value = buildCsv();
+    $("#copiedMsg").hidden = true;
+    panel.hidden = false;
+  });
+  $("#dismissCsvBtn").addEventListener("click", function () { $("#exportPanel").hidden = true; });
+  $("#copyCsvBtn").addEventListener("click", function () {
+    var ta = $("#csvText");
+    ta.focus(); ta.select();
+    try {
+      document.execCommand("copy");
+      var msg = $("#copiedMsg");
+      msg.hidden = false;
+      setTimeout(function () { msg.hidden = true; }, 2000);
+    } catch (e) { /* clipboard blocked */ }
+    window.getSelection && window.getSelection().removeAllRanges();
+  });
+
+  /* ---------- Tabs ---------- */
+  function switchTab(name) {
+    document.querySelectorAll(".tab").forEach(function (t) {
+      t.classList.toggle("active", t.getAttribute("data-tab") === name);
+    });
+    document.querySelectorAll(".panel").forEach(function (p) {
+      p.classList.toggle("active", p.id === "panel-" + name);
+    });
+    if (name === "history") renderHistory();
+  }
   $("#tabs").addEventListener("click", function (e) {
-    const btn = e.target.closest(".tab");
-    if (!btn) return;
-    $$(".tab").forEach(function (t) { t.classList.remove("active"); });
-    $$(".view").forEach(function (v) { v.classList.remove("active"); });
-    btn.classList.add("active");
-    $("#view-" + btn.dataset.view).classList.add("active");
-  });
-
-  // Dashboard
-  $("#autoAssignBtn").addEventListener("click", autoAssign);
-
-  // Leads
-  $("#addLeadBtn").addEventListener("click", function () { openLeadModal(null); });
-  ["#leadSearch", "#filterStatus", "#filterRep", "#filterSource"].forEach(function (sel) {
-    $(sel).addEventListener("input", renderLeads);
-  });
-  $$("#leadsTable th[data-sort]").forEach(function (th) {
-    th.addEventListener("click", function () {
-      const k = th.dataset.sort;
-      if (sortKey === k) sortDir *= -1; else { sortKey = k; sortDir = 1; }
-      renderLeads();
-    });
-  });
-  $("#leadsBody").addEventListener("click", function (e) {
-    const edit = e.target.closest("[data-edit]");
-    const del = e.target.closest("[data-del]");
-    if (edit) {
-      openLeadModal(state.leads.find(function (l) { return l.id === edit.dataset.edit; }));
-    } else if (del) {
-      const lead = state.leads.find(function (l) { return l.id === del.dataset.del; });
-      if (confirm("Delete lead \"" + lead.name + "\"?")) {
-        state.leads = state.leads.filter(function (l) { return l.id !== del.dataset.del; });
-        save(); renderAll(); toast("Lead deleted");
-      }
-    }
-  });
-  $("#leadsBody").addEventListener("change", function (e) {
-    const sel = e.target.closest("[data-assign]");
-    if (!sel) return;
-    const lead = state.leads.find(function (l) { return l.id === sel.dataset.assign; });
-    lead.repId = sel.value || null;
-    save(); renderDashboard(); renderReps();
-    toast(lead.repId ? "Assigned to " + repName(lead.repId) : "Unassigned");
-  });
-
-  // Reps
-  $("#addRepBtn").addEventListener("click", function () { openRepModal(null); });
-  $("#repCards").addEventListener("click", function (e) {
-    const edit = e.target.closest("[data-editrep]");
-    const del = e.target.closest("[data-delrep]");
-    if (edit) {
-      openRepModal(repById(edit.dataset.editrep));
-    } else if (del) {
-      const rep = repById(del.dataset.delrep);
-      const n = state.leads.filter(function (l) { return l.repId === rep.id; }).length;
-      const msg = n
-        ? "Delete " + rep.name + "? Their " + n + " lead(s) will become unassigned."
-        : "Delete " + rep.name + "?";
-      if (confirm(msg)) {
-        state.leads.forEach(function (l) { if (l.repId === rep.id) l.repId = null; });
-        state.reps = state.reps.filter(function (r) { return r.id !== rep.id; });
-        save(); renderAll(); toast("Rep deleted");
-      }
-    }
-  });
-
-  // Modals: close on backdrop / cancel
-  $$(".modal-backdrop").forEach(function (m) {
-    m.addEventListener("click", function (e) {
-      if (e.target === m || e.target.hasAttribute("data-close")) m.hidden = true;
-    });
-  });
-  document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") $$(".modal-backdrop").forEach(function (m) { m.hidden = true; });
-  });
-
-  // Data
-  $("#exportJsonBtn").addEventListener("click", function () {
-    download("leaddist-backup.json", JSON.stringify(state, null, 2), "application/json");
-  });
-  $("#exportCsvBtn").addEventListener("click", exportCsv);
-  $("#importFile").addEventListener("change", function (e) {
-    if (e.target.files[0]) importJson(e.target.files[0]);
-    e.target.value = "";
-  });
-  $("#resetBtn").addEventListener("click", function () {
-    if (confirm("Reset ALL data and reload demo content? This cannot be undone.")) {
-      state = seed(); save(); renderAll(); toast("Data reset");
-    }
+    var btn = e.target.closest(".tab");
+    if (btn) switchTab(btn.getAttribute("data-tab"));
   });
 
   /* ---------- Go ---------- */
-  renderAll();
+  initTheme();
+  renderTracker();
 })();

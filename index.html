@@ -3,167 +3,67 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>LeadDist · Lead Distribution Tracker</title>
-  <meta name="description" content="Track and distribute sales leads across your team." />
+  <title>ANZ Zoho Lead Distribution</title>
+  <meta name="description" content="Monthly lead distribution tracker for the ANZ Zoho sales team." />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css" />
   <link rel="stylesheet" href="styles.css" />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>" />
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">
-      <span class="logo">📊</span>
-      <div>
-        <h1>LeadDist</h1>
-        <p class="tagline">Lead Distribution Tracker</p>
-      </div>
+    <div class="head-main">
+      <h1>ANZ Zoho lead distribution</h1>
+      <p class="subtitle" id="subtitle">Tracking …</p>
     </div>
-    <nav class="tabs" id="tabs">
-      <button class="tab active" data-view="dashboard">Dashboard</button>
-      <button class="tab" data-view="leads">Leads</button>
-      <button class="tab" data-view="reps">Team</button>
-      <button class="tab" data-view="data">Data</button>
-    </nav>
+    <div class="head-right">
+      <span class="grand-total" id="grandTotal">0 total leads</span>
+      <button class="icon-btn theme-toggle" id="themeToggle" title="Toggle light / dark" aria-label="Toggle theme">
+        <i class="ti ti-moon"></i>
+      </button>
+    </div>
   </header>
 
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-tab="tracker">Tracker</button>
+    <button class="tab" data-tab="history">History</button>
+  </nav>
+
   <main class="container">
-
-    <!-- DASHBOARD -->
-    <section id="view-dashboard" class="view active">
-      <div class="stat-grid" id="statGrid"></div>
-
-      <div class="panel">
-        <div class="panel-head">
-          <h2>Distribution by Rep</h2>
-          <button class="btn btn-primary" id="autoAssignBtn">⚡ Auto-assign unassigned</button>
-        </div>
-        <div id="distChart" class="dist-chart"></div>
+    <!-- TRACKER -->
+    <section id="panel-tracker" class="panel active">
+      <div class="close-bar">
+        <span id="closeBarText">Ready to close this month? Snapshot this month and reset all counters.</span>
+        <button class="btn btn-primary" id="closeMonthBtn">Close month</button>
       </div>
-
-      <div class="two-col">
-        <div class="panel">
-          <h2>Leads by Status</h2>
-          <div id="statusChart" class="bar-list"></div>
-        </div>
-        <div class="panel">
-          <h2>Leads by Source</h2>
-          <div id="sourceChart" class="bar-list"></div>
-        </div>
-      </div>
+      <div id="sections"></div>
     </section>
 
-    <!-- LEADS -->
-    <section id="view-leads" class="view">
-      <div class="panel">
-        <div class="panel-head">
-          <h2>Leads</h2>
-          <button class="btn btn-primary" id="addLeadBtn">+ Add lead</button>
-        </div>
-        <div class="filters">
-          <input type="search" id="leadSearch" placeholder="Search name, company, email…" />
-          <select id="filterStatus"><option value="">All statuses</option></select>
-          <select id="filterRep"><option value="">All reps</option></select>
-          <select id="filterSource"><option value="">All sources</option></select>
-        </div>
-        <div class="table-wrap">
-          <table id="leadsTable">
-            <thead>
-              <tr>
-                <th data-sort="name">Lead</th>
-                <th data-sort="company">Company</th>
-                <th data-sort="source">Source</th>
-                <th data-sort="value">Value</th>
-                <th data-sort="status">Status</th>
-                <th data-sort="repId">Assigned to</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="leadsBody"></tbody>
-          </table>
-        </div>
-        <p class="empty" id="leadsEmpty" hidden>No leads match. Add one to get started.</p>
+    <!-- HISTORY -->
+    <section id="panel-history" class="panel">
+      <div class="history-toolbar">
+        <span id="historyCount">0 months recorded</span>
+        <button class="btn" id="exportCsvBtn" hidden>
+          <i class="ti ti-download"></i> Export CSV
+        </button>
       </div>
-    </section>
 
-    <!-- REPS / TEAM -->
-    <section id="view-reps" class="view">
-      <div class="panel">
-        <div class="panel-head">
-          <h2>Team members</h2>
-          <button class="btn btn-primary" id="addRepBtn">+ Add rep</button>
+      <div id="exportPanel" class="export-panel" hidden>
+        <p class="muted">Copy the text below and paste into a .csv file, or open it directly in Excel / Sheets.</p>
+        <textarea id="csvText" readonly rows="8"></textarea>
+        <div class="export-actions">
+          <button class="btn btn-primary" id="copyCsvBtn"><i class="ti ti-copy"></i> Copy to clipboard</button>
+          <span class="copied" id="copiedMsg" hidden>Copied!</span>
+          <button class="btn" id="dismissCsvBtn">Dismiss</button>
         </div>
-        <div id="repCards" class="rep-cards"></div>
-        <p class="empty" id="repsEmpty" hidden>No team members yet. Add your first rep.</p>
       </div>
-    </section>
 
-    <!-- DATA -->
-    <section id="view-data" class="view">
-      <div class="panel">
-        <h2>Import / Export</h2>
-        <p class="muted">All data is stored locally in your browser (localStorage). Use these to back up or move data.</p>
-        <div class="btn-row">
-          <button class="btn" id="exportJsonBtn">⬇ Export JSON</button>
-          <button class="btn" id="exportCsvBtn">⬇ Export leads CSV</button>
-          <label class="btn" for="importFile">⬆ Import JSON</label>
-          <input type="file" id="importFile" accept="application/json" hidden />
-          <button class="btn btn-danger" id="resetBtn">🗑 Reset all data</button>
-        </div>
-      </div>
-      <div class="panel">
-        <h2>About</h2>
-        <p class="muted">LeadDist distributes and tracks sales leads across your team. Auto-assign spreads
-        unassigned leads round-robin to active reps by current load. Everything runs client-side — safe to
-        host on GitHub Pages.</p>
-      </div>
+      <div id="historyRecords"></div>
     </section>
   </main>
 
-  <!-- Lead modal -->
-  <div class="modal-backdrop" id="leadModal" hidden>
-    <div class="modal">
-      <h3 id="leadModalTitle">Add lead</h3>
-      <form id="leadForm">
-        <input type="hidden" id="leadId" />
-        <div class="form-grid">
-          <label>Name<input required id="f_name" /></label>
-          <label>Company<input id="f_company" /></label>
-          <label>Email<input type="email" id="f_email" /></label>
-          <label>Phone<input id="f_phone" /></label>
-          <label>Source<select id="f_source"></select></label>
-          <label>Value ($)<input type="number" id="f_value" min="0" step="100" value="0" /></label>
-          <label>Status<select id="f_status"></select></label>
-          <label>Assigned to<select id="f_rep"></select></label>
-          <label class="full">Notes<textarea id="f_notes" rows="2"></textarea></label>
-        </div>
-        <div class="modal-actions">
-          <button type="button" class="btn" data-close>Cancel</button>
-          <button type="submit" class="btn btn-primary">Save</button>
-        </div>
-      </form>
-    </div>
-  </div>
+  <div id="modalRoot"></div>
 
-  <!-- Rep modal -->
-  <div class="modal-backdrop" id="repModal" hidden>
-    <div class="modal">
-      <h3 id="repModalTitle">Add rep</h3>
-      <form id="repForm">
-        <input type="hidden" id="repId" />
-        <div class="form-grid">
-          <label>Name<input required id="r_name" /></label>
-          <label>Email<input type="email" id="r_email" /></label>
-          <label class="checkbox full"><input type="checkbox" id="r_active" checked /> Active (receives auto-assigned leads)</label>
-        </div>
-        <div class="modal-actions">
-          <button type="button" class="btn" data-close>Cancel</button>
-          <button type="submit" class="btn btn-primary">Save</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <div id="toast" class="toast" hidden></div>
-
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
